@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 from werkzeug.utils import secure_filename
 
-# -------- BEHAVIOR IMPORT --------
+# Import behavior function
 from eye_contact import eye_contact_score
 
 app = Flask(__name__)
@@ -16,15 +16,10 @@ app = Flask(__name__)
 UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # max 50MB upload
 
 # ---------------- LOAD MODEL ----------------
 model = tf.keras.models.load_model("video_autism_model.h5")
-input_shape = model.input_shape  # e.g. (None, 20, 112, 112, 3)
-num_frames = input_shape[1]
-img_height = input_shape[2]
-img_width = input_shape[3]
-channels = input_shape[4]
 
 # ---------------- PLACEHOLDER BEHAVIOR FUNCTIONS ----------------
 def head_movement_score(video_path):
@@ -35,34 +30,30 @@ def emotion_stability_score(video_path):
 
 # ---------------- VIDEO PREPROCESS ----------------
 def preprocess_video(video_path):
+    num_frames, img_height, img_width, channels = model.input_shape[1:]
+
     cap = cv2.VideoCapture(video_path)
     frames = []
-
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if total_frames == 0:
         cap.release()
         return None
 
-    frame_idxs = np.linspace(0, total_frames - 1, min(num_frames, total_frames)).astype(int)
+    frame_idxs = np.linspace(0, total_frames-1, min(num_frames, total_frames)).astype(int)
 
     for idx in frame_idxs:
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = cap.read()
         if not ret:
             continue
+
         frame = cv2.resize(frame, (img_width, img_height))
-        if channels == 1:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            frame = frame[:, :, np.newaxis]
         frame = frame / 255.0
         frames.append(frame)
 
     cap.release()
 
-    if not frames:
-        return None
-
-    # Pad frames if fewer than required
+    # Pad if fewer frames
     while len(frames) < num_frames:
         frames.append(frames[-1])
 
@@ -98,42 +89,40 @@ def index():
                 if data is None:
                     error = "Could not read video."
                 else:
-                    try:
-                        pred = model.predict(data, verbose=0)[0][0]
-                        label = "Autism" if pred > 0.5 else "Non-Autism"
-                        confidence = round(pred if pred > 0.5 else 1 - pred, 2)
-                        prediction = True
+                    # Predict
+                    pred = model.predict(data, verbose=0)[0][0]
+                    label = "Autism" if pred > 0.5 else "Non-Autism"
+                    confidence = round(pred if pred > 0.5 else 1 - pred, 2)
+                    prediction = True
 
-                        # Behavior analysis
-                        eye = eye_contact_score(video_path)
-                        head = head_movement_score(video_path)
-                        emotion = emotion_stability_score(video_path)
+                    # Behavior analysis
+                    eye = eye_contact_score(video_path)
+                    head = head_movement_score(video_path)
+                    emotion = emotion_stability_score(video_path)
 
-                        behavior = {
-                            "eye": eye,
-                            "head": head,
-                            "emotion": emotion,
-                            "attention": "High" if eye >= 70 else "Medium" if eye >= 40 else "Low"
-                        }
+                    behavior = {
+                        "eye": eye,
+                        "head": head,
+                        "emotion": emotion,
+                        "attention": "High" if eye >= 70 else "Medium" if eye >= 40 else "Low"
+                    }
 
-                        # Risk assessment
-                        risk_score = round(
-                            (0.4 * confidence * 100) +
-                            (0.3 * (100 - eye)) +
-                            (0.3 * (100 - head)),
-                            2
-                        )
+                    # Risk assessment
+                    risk_score = round(
+                        (0.4 * confidence * 100) +
+                        (0.3 * (100 - eye)) +
+                        (0.3 * (100 - head)),
+                        2
+                    )
 
-                        if risk_score >= 70:
-                            risk_level = "High"
-                        elif risk_score >= 40:
-                            risk_level = "Moderate"
-                        else:
-                            risk_level = "Low"
+                    if risk_score >= 70:
+                        risk_level = "High"
+                    elif risk_score >= 40:
+                        risk_level = "Moderate"
+                    else:
+                        risk_level = "Low"
 
-                        eye_score = eye
-                    except Exception as e:
-                        error = f"Prediction error: {e}"
+                    eye_score = eye
 
     return render_template(
         "index.html",
@@ -148,7 +137,7 @@ def index():
         error=error
     )
 
-# ---------------- RENDER ENTRY POINT ----------------
+# ---------------- RUN APP ----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
