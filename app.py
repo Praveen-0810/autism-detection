@@ -1,8 +1,10 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Force CPU-only
+
 from flask import Flask, render_template, request
 import cv2
 import numpy as np
 import tensorflow as tf
-import os
 from werkzeug.utils import secure_filename
 
 # -------- BEHAVIOR IMPORT --------
@@ -14,12 +16,11 @@ app = Flask(__name__)
 UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB limit
+MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # max 50MB upload
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
 # ---------------- LOAD MODEL ----------------
-# Force CPU only
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-model = tf.keras.models.load_model("video_autism_model.h5", compile=False)
+model = tf.keras.models.load_model("video_autism_model.h5")
 
 # ---------------- PLACEHOLDER BEHAVIOR FUNCTIONS ----------------
 def head_movement_score(video_path):
@@ -29,7 +30,7 @@ def emotion_stability_score(video_path):
     return 70.0  # placeholder
 
 # ---------------- VIDEO PREPROCESS ----------------
-def preprocess_video(video_path, num_frames=8, img_size=(48, 48)):
+def preprocess_video(video_path, num_frames=10, img_size=(48, 48)):
     cap = cv2.VideoCapture(video_path)
     frames = []
 
@@ -38,7 +39,7 @@ def preprocess_video(video_path, num_frames=8, img_size=(48, 48)):
         cap.release()
         return None
 
-    frame_idxs = np.linspace(0, total_frames - 1, num_frames).astype(int)
+    frame_idxs = np.linspace(0, total_frames - 1, min(num_frames, total_frames)).astype(int)
 
     for idx in frame_idxs:
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
@@ -50,9 +51,10 @@ def preprocess_video(video_path, num_frames=8, img_size=(48, 48)):
 
     cap.release()
 
-    if len(frames) == 0:
+    if not frames:
         return None
 
+    # Pad frames if fewer than num_frames
     while len(frames) < num_frames:
         frames.append(frames[-1])
 
@@ -85,17 +87,15 @@ def index():
 
         data = preprocess_video(video_path)
         if data is None:
-            return render_template("index.html", error="Failed to process video.")
+            return render_template("index.html", error="Could not read video.")
 
-        try:
-            pred = model.predict(data, verbose=0)[0][0]
-            label = "Autism" if pred > 0.5 else "Non-Autism"
-            confidence = round(pred if pred > 0.5 else 1 - pred, 2)
-            prediction = True
-        except Exception as e:
-            return render_template("index.html", error=f"Model prediction failed: {str(e)}")
+        # Predict
+        pred = model.predict(data, verbose=0)[0][0]
+        label = "Autism" if pred > 0.5 else "Non-Autism"
+        confidence = round(pred if pred > 0.5 else 1 - pred, 2)
+        prediction = True
 
-        # -------- BEHAVIOR ANALYSIS --------
+        # Behavior analysis
         eye = eye_contact_score(video_path)
         head = head_movement_score(video_path)
         emotion = emotion_stability_score(video_path)
@@ -107,7 +107,7 @@ def index():
             "attention": "High" if eye >= 70 else "Medium" if eye >= 40 else "Low"
         }
 
-        # -------- RISK ASSESSMENT --------
+        # Risk assessment
         risk_score = round(
             (0.4 * confidence * 100) +
             (0.3 * (100 - eye)) +
@@ -138,4 +138,5 @@ def index():
 
 # ---------------- RENDER ENTRY POINT ----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
