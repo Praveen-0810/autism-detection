@@ -2,96 +2,136 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Autism Video Detection</title>
+    <title>Autism Detection Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
-            font-family: Arial, sans-serif;
+            background-color: #f4f6f9;
+            font-family: 'Segoe UI', sans-serif;
+            padding-top: 40px;
+        }
+        .container {
             max-width: 900px;
-            margin: auto;
-            padding: 20px;
-            background-color: #f9f9f9;
+        }
+        .card {
+            margin-top: 20px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
         }
         h1 {
-            text-align: center;
-            color: #333;
-        }
-        form {
-            text-align: center;
-            margin: 20px 0;
-        }
-        input[type="file"] {
-            padding: 10px;
-            margin-right: 10px;
-        }
-        button {
-            padding: 10px 20px;
-            background-color: #2f8fed;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #1064c7;
-        }
-        .result {
-            background-color: #fff;
-            border: 1px solid #ccc;
-            padding: 20px;
-            margin-top: 30px;
-            border-radius: 8px;
-        }
-        .result h2 {
-            color: #2f8fed;
-        }
-        .result p {
-            font-size: 16px;
-            margin: 5px 0;
+            font-weight: 600;
+            margin-bottom: 30px;
         }
         video {
-            display: block;
-            margin: 15px auto;
             max-width: 100%;
-            border: 1px solid #ccc;
-            border-radius: 5px;
+            border-radius: 8px;
         }
         .attention-high { color: green; font-weight: bold; }
         .attention-medium { color: orange; font-weight: bold; }
         .attention-low { color: red; font-weight: bold; }
+        .progress-bar { font-weight: bold; }
     </style>
 </head>
 <body>
-    <h1>Autism Video Detection</h1>
-    
-    <form method="POST" enctype="multipart/form-data">
-        <input type="file" name="video" accept="video/*" required>
-        <button type="submit">Upload & Analyze</button>
+<div class="container">
+    <h1 class="text-center">Autism Detection from Video</h1>
+
+    {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" enctype="multipart/form-data" class="text-center mb-4" id="uploadForm">
+        <input type="file" name="video" accept="video/*" required class="form-control mb-3">
+        <button type="submit" class="btn btn-primary">Analyze Video</button>
     </form>
 
     {% if prediction %}
-    <div class="result">
-        <h2>Prediction: {{ label }}</h2>
-        <p><strong>Confidence:</strong> {{ confidence * 100 }}%</p>
-        <p><strong>Eye Contact Score:</strong> {{ eye_score }}%</p>
-        <p><strong>Head Movement Score:</strong> {{ behavior.head }}%</p>
-        <p><strong>Emotion Stability Score:</strong> {{ behavior.emotion }}%</p>
-        <p><strong>Attention Level:</strong>
-            {% if behavior.attention == 'High' %}
-                <span class="attention-high">{{ behavior.attention }}</span>
-            {% elif behavior.attention == 'Medium' %}
-                <span class="attention-medium">{{ behavior.attention }}</span>
-            {% else %}
-                <span class="attention-low">{{ behavior.attention }}</span>
-            {% endif %}
+    <div class="card p-4 mt-4">
+        <h3 class="card-title text-center">Prediction Result</h3>
+        <p class="text-center fs-5">
+            <strong>{{ label }}</strong> 
+            (Confidence: {{ confidence * 100 }}%)
         </p>
-        <p><strong>Overall Risk Score:</strong> {{ risk_score }}%</p>
-        <p><strong>Risk Level:</strong> {{ risk_level }}</p>
-        
+
         {% if video_path %}
-            <video src="{{ video_path }}" controls></video>
+            <div class="text-center">
+                <video controls src="{{ video_path }}"></video>
+            </div>
         {% endif %}
     </div>
+
+    <div class="card p-4 mt-4">
+        <h3 class="card-title text-center">Behavior Analysis</h3>
+        <table class="table table-striped">
+            <tr>
+                <th>Metric</th>
+                <th>Value</th>
+            </tr>
+            <tr>
+                <td>Eye Contact</td>
+                <td>
+                    <div class="progress">
+                        <div class="progress-bar bg-success" role="progressbar" style="width: {{ behavior.eye }}%">
+                            {{ behavior.eye }}%
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td>Head Movement</td>
+                <td>
+                    <div class="progress">
+                        <div class="progress-bar bg-info" role="progressbar" style="width: {{ behavior.head }}%">
+                            {{ behavior.head }}%
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td>Emotion Stability</td>
+                <td>
+                    <div class="progress">
+                        <div class="progress-bar bg-warning" role="progressbar" style="width: {{ behavior.emotion }}%">
+                            {{ behavior.emotion }}%
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td>Attention Level</td>
+                <td class="
+                    {% if behavior.attention == 'High' %}attention-high{% endif %}
+                    {% if behavior.attention == 'Medium' %}attention-medium{% endif %}
+                    {% if behavior.attention == 'Low' %}attention-low{% endif %}
+                    ">
+                    {{ behavior.attention }}
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="card p-4 mt-4 mb-5">
+        <h3 class="card-title text-center">Risk Assessment</h3>
+        <p class="text-center fs-5">
+            Score: <strong>{{ risk_score }}</strong> — Level: 
+            <span class="
+                    {% if risk_level == 'High' %}attention-low{% endif %}
+                    {% if risk_level == 'Moderate' %}attention-medium{% endif %}
+                    {% if risk_level == 'Low' %}attention-high{% endif %}
+                    ">{{ risk_level }}</span>
+        </p>
+    </div>
     {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Automatically submit form when a file is selected
+    document.querySelector('input[name="video"]').addEventListener('change', function() {
+        if(this.files.length) {
+            document.getElementById('uploadForm').submit();
+        }
+    });
+</script>
 </body>
 </html>
