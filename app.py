@@ -1,13 +1,15 @@
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # suppress TF info logs
-
+import logging
 from flask import Flask, render_template, request
 import cv2
 import numpy as np
 import tensorflow as tf
 from werkzeug.utils import secure_filename
-
 from eye_contact import eye_contact_score
+
+# ---------------- ENV CONFIG ----------------
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+tf.get_logger().setLevel(logging.ERROR)
 
 app = Flask(__name__)
 
@@ -15,14 +17,17 @@ UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
+# ---------------- LOAD MODEL ----------------
 model = tf.keras.models.load_model("video_autism_model.h5")
 
+# ---------------- PLACEHOLDER BEHAVIOR FUNCTIONS ----------------
 def head_movement_score(video_path):
-    return 65.0
+    return 65.0  # placeholder
 
 def emotion_stability_score(video_path):
-    return 70.0
+    return 70.0  # placeholder
 
+# ---------------- VIDEO PREPROCESS ----------------
 def preprocess_video(video_path, num_frames=20, img_size=(64, 64)):
     cap = cv2.VideoCapture(video_path)
     frames = []
@@ -33,6 +38,7 @@ def preprocess_video(video_path, num_frames=20, img_size=(64, 64)):
         return None
 
     frame_idxs = np.linspace(0, total_frames - 1, num_frames).astype(int)
+
     for idx in frame_idxs:
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = cap.read()
@@ -42,11 +48,13 @@ def preprocess_video(video_path, num_frames=20, img_size=(64, 64)):
             frames.append(frame)
 
     cap.release()
+
     while len(frames) < num_frames:
         frames.append(frames[-1])
 
     return np.array([frames])
 
+# ---------------- MAIN ROUTE ----------------
 @app.route("/", methods=["GET", "POST"])
 def index():
     prediction = False
@@ -58,46 +66,55 @@ def index():
     risk_score = None
     risk_level = None
 
-    if request.method == "POST" and "video" in request.files:
+    if request.method == "POST":
+        if "video" not in request.files:
+            return render_template("index.html")
+
         video = request.files["video"]
-        if video.filename:
-            filename = secure_filename(video.filename)
-            video_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-            video.save(video_path)
+        if video.filename == "":
+            return render_template("index.html")
 
-            data = preprocess_video(video_path)
-            if data:
-                pred = model.predict(data)[0][0]
-                label = "Autism" if pred > 0.5 else "Non-Autism"
-                confidence = round(pred if pred > 0.5 else 1 - pred, 2)
-                prediction = True
+        filename = secure_filename(video.filename)
+        video_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        video.save(video_path)
 
-                eye = eye_contact_score(video_path)
-                head = head_movement_score(video_path)
-                emotion = emotion_stability_score(video_path)
+        data = preprocess_video(video_path)
+        if data is None:
+            return render_template("index.html")
 
-                behavior = {
-                    "eye": eye,
-                    "head": head,
-                    "emotion": emotion,
-                    "attention": "High" if eye >= 70 else "Medium" if eye >= 40 else "Low"
-                }
+        pred = model.predict(data)[0][0]
+        label = "Autism" if pred > 0.5 else "Non-Autism"
+        confidence = round(pred if pred > 0.5 else 1 - pred, 2)
+        prediction = True
 
-                risk_score = round(
-                    (0.4 * confidence * 100) +
-                    (0.3 * (100 - eye)) +
-                    (0.3 * (100 - head)),
-                    2
-                )
+        # -------- BEHAVIOR ANALYSIS --------
+        eye = eye_contact_score(video_path)
+        head = head_movement_score(video_path)
+        emotion = emotion_stability_score(video_path)
 
-                if risk_score >= 70:
-                    risk_level = "High"
-                elif risk_score >= 40:
-                    risk_level = "Moderate"
-                else:
-                    risk_level = "Low"
+        behavior = {
+            "eye": eye,
+            "head": head,
+            "emotion": emotion,
+            "attention": "High" if eye >= 70 else "Medium" if eye >= 40 else "Low"
+        }
 
-                eye_score = eye
+        # -------- RISK ASSESSMENT --------
+        risk_score = round(
+            (0.4 * confidence * 100) +
+            (0.3 * (100 - eye)) +
+            (0.3 * (100 - head)),
+            2
+        )
+
+        if risk_score >= 70:
+            risk_level = "High"
+        elif risk_score >= 40:
+            risk_level = "Moderate"
+        else:
+            risk_level = "Low"
+
+        eye_score = eye
 
     return render_template(
         "index.html",
@@ -111,5 +128,6 @@ def index():
         risk_level=risk_level
     )
 
+# ---------------- RENDER ENTRY POINT ----------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
