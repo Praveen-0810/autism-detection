@@ -1,24 +1,30 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Force TensorFlow to use CPU only
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Hide TF INFO/WARNING
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Force CPU
 
 from flask import Flask, render_template, request
 import cv2
 import numpy as np
 import tensorflow as tf
 from werkzeug.utils import secure_filename
+
+# -------- BEHAVIOR IMPORT --------
 from eye_contact import eye_contact_score
 
 # ---------------- CONFIG ----------------
 UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-MAX_VIDEO_SIZE = 50 * 1024 * 1024  # 50 MB
-
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max upload
 
 # ---------------- LOAD MODEL ----------------
-model = tf.keras.models.load_model("video_autism_model.h5")
+try:
+    model = tf.keras.models.load_model("video_autism_model.h5")
+except Exception as e:
+    print("Error loading model:", e)
+    model = None
 
 # ---------------- PLACEHOLDER BEHAVIOR FUNCTIONS ----------------
 def head_movement_score(video_path):
@@ -61,6 +67,8 @@ def index():
     label = None
     confidence = 0
     video_path = None
+    error = None
+
     eye_score = None
     behavior = None
     risk_score = None
@@ -68,17 +76,13 @@ def index():
 
     if request.method == "POST":
         if "video" not in request.files:
-            return render_template("index.html")
+            error = "No video uploaded."
+            return render_template("index.html", error=error)
 
         video = request.files["video"]
         if video.filename == "":
-            return render_template("index.html")
-
-        # Check file size
-        video.seek(0, os.SEEK_END)
-        if video.tell() > MAX_VIDEO_SIZE:
-            return "Video too large. Max 50MB allowed.", 400
-        video.seek(0)
+            error = "No video selected."
+            return render_template("index.html", error=error)
 
         filename = secure_filename(video.filename)
         video_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
@@ -86,12 +90,19 @@ def index():
 
         data = preprocess_video(video_path)
         if data is None:
-            return render_template("index.html")
+            error = "Failed to read video."
+            return render_template("index.html", error=error)
 
-        pred = model.predict(data)[0][0]
-        label = "Autism" if pred > 0.5 else "Non-Autism"
-        confidence = round(pred if pred > 0.5 else 1 - pred, 2)
-        prediction = True
+        # -------- MODEL PREDICTION --------
+        try:
+            pred = model.predict(data)[0][0]
+            label = "Autism" if pred > 0.5 else "Non-Autism"
+            confidence = round(pred if pred > 0.5 else 1 - pred, 2)
+            prediction = True
+        except Exception as e:
+            print("Prediction error:", e)
+            error = "Prediction failed. Try a smaller video."
+            return render_template("index.html", error=error)
 
         # -------- BEHAVIOR ANALYSIS --------
         eye = eye_contact_score(video_path)
@@ -131,7 +142,8 @@ def index():
         eye_score=eye_score,
         behavior=behavior,
         risk_score=risk_score,
-        risk_level=risk_level
+        risk_level=risk_level,
+        error=error
     )
 
 # ---------------- RENDER ENTRY POINT ----------------
