@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autism Video Detection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        form {
+            text-align: center;
+            margin: 20px 0;
+        }
+        input[type="file"] {
+            padding: 10px;
+            margin-right: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #2f8fed;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1064c7;
+        }
+        .result {
+            background-color: #fff;
+            border: 1px solid #ccc;
+            padding: 20px;
+            margin-top: 30px;
+            border-radius: 8px;
+        }
+        .result h2 {
+            color: #2f8fed;
+        }
+        .result p {
+            font-size: 16px;
+            margin: 5px 0;
+        }
+        video {
+            display: block;
+            margin: 15px auto;
+            max-width: 100%;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .attention-high { color: green; font-weight: bold; }
+        .attention-medium { color: orange; font-weight: bold; }
+        .attention-low { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Autism Video Detection</h1>
+    
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="video" accept="video/*" required>
+        <button type="submit">Upload & Analyze</button>
+    </form>
+
+    {% if prediction %}
+    <div class="result">
+        <h2>Prediction: {{ label }}</h2>
+        <p><strong>Confidence:</strong> {{ confidence * 100 }}%</p>
+        <p><strong>Eye Contact Score:</strong> {{ eye_score }}%</p>
+        <p><strong>Head Movement Score:</strong> {{ behavior.head }}%</p>
+        <p><strong>Emotion Stability Score:</strong> {{ behavior.emotion }}%</p>
+        <p><strong>Attention Level:</strong>
+            {% if behavior.attention == 'High' %}
+                <span class="attention-high">{{ behavior.attention }}</span>
+            {% elif behavior.attention == 'Medium' %}
+                <span class="attention-medium">{{ behavior.attention }}</span>
+            {% else %}
+                <span class="attention-low">{{ behavior.attention }}</span>
+            {% endif %}
+        </p>
+        <p><strong>Overall Risk Score:</strong> {{ risk_score }}%</p>
+        <p><strong>Risk Level:</strong> {{ risk_level }}</p>
+        
+        {% if video_path %}
+            <video src="{{ video_path }}" controls></video>
+        {% endif %}
+    </div>
+    {% endif %}
+</body>
+</html>
