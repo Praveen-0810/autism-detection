@@ -1,5 +1,6 @@
 import os
-import logging
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Force TensorFlow to use CPU only
+
 from flask import Flask, render_template, request
 import cv2
 import numpy as np
@@ -7,14 +8,13 @@ import tensorflow as tf
 from werkzeug.utils import secure_filename
 from eye_contact import eye_contact_score
 
-# ---------------- ENV CONFIG ----------------
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-tf.get_logger().setLevel(logging.ERROR)
-
-app = Flask(__name__)
-
+# ---------------- CONFIG ----------------
 UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+MAX_VIDEO_SIZE = 50 * 1024 * 1024  # 50 MB
+
+app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # ---------------- LOAD MODEL ----------------
@@ -28,7 +28,7 @@ def emotion_stability_score(video_path):
     return 70.0  # placeholder
 
 # ---------------- VIDEO PREPROCESS ----------------
-def preprocess_video(video_path, num_frames=20, img_size=(64, 64)):
+def preprocess_video(video_path, num_frames=10, img_size=(64, 64)):
     cap = cv2.VideoCapture(video_path)
     frames = []
 
@@ -73,6 +73,12 @@ def index():
         video = request.files["video"]
         if video.filename == "":
             return render_template("index.html")
+
+        # Check file size
+        video.seek(0, os.SEEK_END)
+        if video.tell() > MAX_VIDEO_SIZE:
+            return "Video too large. Max 50MB allowed.", 400
+        video.seek(0)
 
         filename = secure_filename(video.filename)
         video_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
@@ -130,4 +136,5 @@ def index():
 
 # ---------------- RENDER ENTRY POINT ----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
